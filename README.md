@@ -92,7 +92,7 @@ project/
 1. **克隆项目**
 
    ``` bash
-   git clone https://github.com/zjZSTU/AI-Chat-System.git
+   git clone https://github.com/Namo1999/AI-Chat-System.git
    cd ai-chat-system
    ```
 
@@ -178,10 +178,11 @@ project/
 
 ## 作者
 
-[Nomo]
+[Namo1999](https://github.com/Namo1999)
 
 ## 致谢
 
 - OpenAI API
 - Gradio
 - Flask
+  
