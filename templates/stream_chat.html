@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI聊天机器人 - 流式响应</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #chat-container {
+            height: 400px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .clear-button {
+            margin-bottom: 10px;
+            background-color: #ff4444;
+        }
+        .clear-button:hover {
+            background-color: #cc0000;
+        }
+        .typing {
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <button class="clear-button" onclick="clearHistory()">清除对话历史</button>
+    <div id="chat-container"></div>
+    <div id="input-container">
+        <input type="text" id="user-input" placeholder="请输入消息..." onkeypress="handleKeyPress(event)">
+        <button onclick="sendMessage()">发送</button>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        let isProcessing = false;
+
+        function addMessage(content, isUser, isTyping = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'} ${isTyping ? 'typing' : ''}`;
+            messageDiv.textContent = content;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return messageDiv;
+        }
+
+        async function sendMessage() {
+            if (isProcessing) return;
+            
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            isProcessing = true;
+            addMessage(message, true);
+            userInput.value = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let messageDiv = addMessage('', false, true);
+                let fullResponse = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const text = decoder.decode(value);
+                    const lines = text.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.slice(6));
+                            
+                            if (data.error) {
+                                messageDiv.textContent = '抱歉，出现了错误：' + data.error;
+                                messageDiv.classList.remove('typing');
+                            } else if (data.content) {
+                                fullResponse += data.content;
+                                messageDiv.textContent = fullResponse;
+                            } else if (data.status === 'complete' && data.response_id) {
+                                messageDiv.classList.remove('typing');
+                                // 保存响应到会话
+                                await fetch('/save_response', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ response_id: data.response_id })
+                                });
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('请求出错:', error);
+                addMessage('抱歉，发生了错误，请稍后重试。', false);
+            } finally {
+                isProcessing = false;
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !isProcessing) {
+                sendMessage();
+            }
+        }
+
+        async function clearHistory() {
+            if (confirm('确定要清除所有对话历史吗？')) {
+                try {
+                    await fetch('/clear', { method: 'POST' });
+                    chatContainer.innerHTML = '';
+                } catch (error) {
+                    console.error('清除历史失败:', error);
+                }
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch('/get_history');
+                const data = await response.json();
+                
+                data.messages.forEach(msg => {
+                    if (msg.role !== 'system') {
+                        addMessage(msg.content, msg.role === 'user');
+                    }
+                });
+            } catch (error) {
+                console.error('加载历史失败:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadHistory);
+    </script>
+</body>
+</html> 
