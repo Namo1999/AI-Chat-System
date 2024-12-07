@@ -1,0 +1,7 @@
+# 自动处理行尾
+* text=auto
+
+# 指定特定文件的行尾
+*.txt text
+*.md text
+*.py text 
